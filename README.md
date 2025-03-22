@@ -8,12 +8,19 @@ This is the factory contract that to create BAB token.
 The config of BAB factory
 
 `Config.protocolFeeRecipient`: The address that receive protocol fee of BAB
+
 `Config.weth`: The address of WETH token
+
 `Config.nonfungiblePositionManager`: The nonfungiblePositionManager address of DEX
+
 `Config.swapRouter`: The nonfungiblePositionManager address of  of DEX
+
 `Config.bondingCurve`: The adderss of bonding curve contract which is used for calculate price
+
 `Config.tradeCreatorFeeBps`: The percentage of graduate fee that give to token creator
+
 `Config.lpCreatorFeeBps`: The percentage LP fee that give to token creator
+
 `Config.createTokenFee`: The fee required to create a token
 
 ### `createToken(string memory name, string memory symbol, address validator, string memory tokenUri, bytes32 _salt) external payable returns (address)`
