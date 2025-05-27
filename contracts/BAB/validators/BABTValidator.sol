@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import './interfaces/IBABValidator.sol';
+import '../interfaces/IBABValidator.sol';
 
 interface ISBT {
   function tokenIdOf(address from) external view returns (uint256);

@@ -4,6 +4,7 @@ pragma solidity ^0.8.2;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/IBABFactory.sol";
 import "./BAB.sol";
+import "./interfaces/ITokenValidator.sol";
 import "hardhat/console.sol";
 
 contract BABFactory is IBABFactory, Ownable {
@@ -18,11 +19,24 @@ contract BABFactory is IBABFactory, Ownable {
     config = _config;
   }
 
-  function createToken(string memory name, string memory symbol, address validator, string memory tokenUri, bytes32 _salt) external payable returns (address) {
+  function createToken(string memory name, string memory symbol, address validator, string memory tokenUri, uint256 devBuy, bytes32 _salt) external payable returns (address) {
     if (msg.sender != owner() && msg.value < config.createTokenFee) {
       revert InsufficientFee();
     }
+
+    // Call TokenValidator to validate symbol
+    if (config.tokenValidator != address(0)) {
+      ITokenValidator(config.tokenValidator).validate(name, symbol);
+    }
+
     BAB token = new BAB{salt: _salt, value: msg.value - config.createTokenFee}(name, symbol, tokenUri, address(this), msg.sender, validator);
+
+    if (devBuy > 0) {
+      IERC20(config.usd1).transferFrom(msg.sender, address(this), devBuy);
+      IERC20(config.usd1).approve(address(token), devBuy);
+      token.buy(msg.sender,  msg.sender, 0, 0, devBuy, 0x0);
+    }
+
     emit BABTokenCreated(address(token), msg.sender, name, symbol, tokenUri, validator, config);
     return address(token);
   }

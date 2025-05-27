@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./interfaces/ISwapRouter.sol";
 import "./interfaces/IUniswapV3Pool.sol";
-import "./interfaces/IWETH.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 import "./interfaces/IBABFactory.sol";
 import "./interfaces/IBABValidator.sol";
@@ -16,50 +15,47 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
   error NotGraduate();
   error ValidationFail();
-  error EthAmountTooSmall();
+  error USD1AmountTooSmall();
   error AddressZero();
-  error EthTransferFailed();
+  error USD1TransferFailed();
   error InsufficientToken();
   error SlippageBoundsExceeded();
   error OnlyPool();
 
   struct SecondaryRewards {
-    uint256 totalAmountEth;
+    uint256 totalAmountUSD;
     uint256 totalAmountToken;
-    uint256 creatorAmountEth;
+    uint256 creatorAmountUSD;
     uint256 creatorAmountToken;
   }
 
-  event BABTokenBuy(address indexed buyer, address indexed recipient, uint256 totalEth, uint256 ethFee, uint256 ethSold, uint256 tokensBought, uint256 buyerTokenBalance, uint256 totalSupply, bool isGraduate);
-  event BABTokenSell(address indexed seller, address indexed recipient, uint256 totalEth, uint256 ethFee, uint256 ethBought, uint256 tokensSold,uint256 sellerTokenBalance, uint256 totalSupply, bool isGraduate);
+  event BABTokenBuy(address indexed buyer, address indexed recipient, uint256 totalUSD, uint256 USDFee, uint256 USDSold, uint256 tokensBought, uint256 buyerTokenBalance, uint256 totalSupply, bool isGraduate);
+  event BABTokenSell(address indexed seller, address indexed recipient, uint256 totalUSD, uint256 USDFee, uint256 USDBought, uint256 tokensSold,uint256 sellerTokenBalance, uint256 totalSupply, bool isGraduate);
   event BABTokenSecondaryRewards(SecondaryRewards rewards);
-  event BABMarketGraduated(address indexed tokenAddress, address indexed poolAddress, uint256 totalEthLiquidity, uint256 totalTokenLiquidity, uint256 lpPositionId, bool isGraduate);
+  event BABMarketGraduated(address indexed tokenAddress, address indexed poolAddress, uint256 totalUSDLiquidity, uint256 totalTokenLiquidity, uint256 lpPositionId, bool isGraduate);
   event BABTokenFees(address indexed tokenCreator, address indexed protocolFeeRecipient, uint256 tokenCreatorFee, uint256 protocolFee);
   event BABTokenTransfer(address indexed from, address indexed to, uint256 amount, uint256 fromTokenBalance, uint256 toTokenBalance, uint256 totalSupply);
 
   uint256 internal constant PRIMARY_MARKET_SUPPLY = 800_000_000e18; // 800M tokens
   uint256 internal constant SECONDARY_MARKET_SUPPLY = 200_000_000e18; // 200M tokens
-  uint256 internal constant GRADUATE_ETH = 18 ether;
-  // Test only
-  // uint256 internal constant GRADUATE_ETH = 0.06 ether;
   uint256 public constant TOTAL_FEE_BPS = 100;
   uint256 public constant MIN_ORDER_SIZE = 0.0000001 ether;
   uint24 public constant LP_FEE = 2500;
   int24 public constant LP_TICK_LOWER = -887250;
   int24 public constant LP_TICK_UPPER = 887250;
   
-  uint160 internal constant POOL_SQRT_PRICE_X96_WETH_0 = 264093875047547803988078840774656;
-  uint160 internal constant POOL_SQRT_PRICE_X96_TOKEN_0 = 23768448754279299195863040;
-  // Test only
-  // uint160 internal constant POOL_SQRT_PRICE_X96_WETH_0 = 4574240095500993219205240109137920;
-  // uint160 internal constant POOL_SQRT_PRICE_X96_TOKEN_0 = 1372272028650298020986880;
+  uint256 internal constant GRADUATE_USD = 12000 ether;
+  uint160 internal constant POOL_SQRT_PRICE_X96_USD1_0 = 10228311798945352246088089731072;
+  uint160 internal constant POOL_SQRT_PRICE_X96_TOKEN_0 = 613698707936721050850557952;
+
   uint256 internal constant MAX_UINT256 = 2**256 - 1;
 
-  address public immutable WETH;
+  address public immutable USD1;
   address public immutable nonfungiblePositionManager;
   address public immutable swapRouter;
   address public immutable protocolFeeRecipient;
   address public immutable validator;
+  address public immutable factory;
   uint256 public immutable tradeCreatorFeeBps;
   uint256 public immutable lpCreatorFeeBps;
 
@@ -80,10 +76,11 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     address _validator
   ) ERC20(name, symbol) ReentrancyGuard() payable {
     tokenURI = _tokenURI;
+    factory = _factory;
     IBABFactory.Config memory config = IBABFactory(_factory).getConfig();
     validator = _validator;
     protocolFeeRecipient = config.protocolFeeRecipient;
-    WETH = config.weth;
+    USD1 = config.usd1;
     nonfungiblePositionManager = config.nonfungiblePositionManager;
     swapRouter = config.swapRouter;
     bondingCurve = IBondingCurve(config.bondingCurve);
@@ -93,14 +90,10 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     
     tokenCreator = _tokenCreator;
 
-    address token0 = WETH < address(this) ? WETH : address(this);
-    address token1 = WETH < address(this) ? address(this) : WETH;
-    uint160 sqrtPriceX96 = token0 == WETH ? POOL_SQRT_PRICE_X96_WETH_0 : POOL_SQRT_PRICE_X96_TOKEN_0;
+    address token0 = USD1 < address(this) ? USD1 : address(this);
+    address token1 = USD1 < address(this) ? address(this) : USD1;
+    uint160 sqrtPriceX96 = token0 == USD1 ? POOL_SQRT_PRICE_X96_USD1_0 : POOL_SQRT_PRICE_X96_TOKEN_0;
     poolAddress = INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(token0, token1, LP_FEE, sqrtPriceX96);
-
-    if (msg.value > 0) {
-      buy(_tokenCreator, _tokenCreator, 0, 0, 0x0);
-    }
   }
 
   function buy(
@@ -108,15 +101,17 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     address refundRecipient,
     uint256 minOrderSize,
     uint160 sqrtPriceLimitX96,
+    uint256 value,
     bytes32 data
   ) public payable nonReentrant returns (uint256) {
-    if (validator != address(0) && !isGraduate) {
-      if (!IBABValidator(validator).validate(recipient, msg.value, data)) {
+    if (validator != address(0) && !isGraduate && msg.sender != factory) {
+      if (!IBABValidator(validator).validate(recipient, value, data)) {
         revert ValidationFail();
       }
     }
-    if (msg.value < MIN_ORDER_SIZE) revert EthAmountTooSmall();
+    if (value < MIN_ORDER_SIZE) revert USD1AmountTooSmall();
     if (recipient == address(0)) revert AddressZero();
+    IERC20(USD1).transferFrom(msg.sender, address(this), value);
 
     // Initialize variables to store the total cost, true order size, fee, and refund if applicable
     uint256 totalCost;
@@ -125,15 +120,14 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     uint256 refund;
 
     if (isGraduate) {
-      fee = _calculateFee(msg.value);
-      totalCost = msg.value - fee;
+      fee = _calculateFee(value);
+      totalCost = value - fee;
       _disperseFees(fee, tradeCreatorFeeBps);
 
-      IWETH(WETH).deposit{value: totalCost}();
-      IWETH(WETH).approve(swapRouter, totalCost);
+      IERC20(USD1).approve(swapRouter, totalCost);
 
       ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-        tokenIn: WETH,
+        tokenIn: USD1,
         tokenOut: address(this),
         fee: LP_FEE,
         recipient: recipient,
@@ -148,13 +142,13 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     } else {
       bool shouldGraduateMarket;
 
-      (totalCost, trueOrderSize, fee, refund, shouldGraduateMarket) = _validateBondingCurveBuy(minOrderSize);
+      (totalCost, trueOrderSize, fee, refund, shouldGraduateMarket) = _validateBondingCurveBuy(minOrderSize, value);
       _mint(recipient, trueOrderSize);
       _disperseFees(fee, tradeCreatorFeeBps);
 
       if (refund > 0) {
-        (bool success, ) = refundRecipient.call{value: refund}("");
-        if (!success) revert EthTransferFailed();
+        bool success = IERC20(USD1).transfer(refundRecipient, refund);
+        if (!success) revert USD1TransferFailed();
       }
 
       // Start the market if this is the final bonding market buy order.
@@ -163,7 +157,7 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
       }
     }
 
-    emit BABTokenBuy(msg.sender, recipient, msg.value, fee, totalCost, trueOrderSize, balanceOf(recipient), totalSupply(), isGraduate);
+    emit BABTokenBuy(msg.sender, recipient, value, fee, totalCost, trueOrderSize, balanceOf(recipient), totalSupply(), isGraduate);
 
     return trueOrderSize;
   }
@@ -183,20 +177,24 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     uint256 payoutAfterFee = truePayoutSize - fee;
     _disperseFees(fee, tradeCreatorFeeBps);
 
-    (bool success, ) = recipient.call{value: payoutAfterFee}("");
-    if (!success) revert EthTransferFailed();
+    bool success = IERC20(USD1).transfer(msg.sender, payoutAfterFee);
+    if (!success) revert USD1TransferFailed();
+
+    if (isGraduate) {
+      _handleSecondaryRewards();
+    }
 
     emit BABTokenSell(msg.sender, recipient, truePayoutSize, fee, payoutAfterFee, tokensToSell, balanceOf(recipient), totalSupply(), isGraduate);
 
     return truePayoutSize;
   }
 
-  function _validateBondingCurveBuy(uint256 minOrderSize) internal returns (uint256 totalCost, uint256 trueOrderSize, uint256 fee, uint256 refund, bool startMarket) {
-    totalCost = msg.value;
+  function _validateBondingCurveBuy(uint256 minOrderSize, uint256 value) internal view returns (uint256 totalCost, uint256 trueOrderSize, uint256 fee, uint256 refund, bool startMarket) {
+    totalCost = value;
     fee = _calculateFee(totalCost);
-    uint256 remainingEth = totalCost - fee;
+    uint256 remainingUSD = totalCost - fee;
 
-    trueOrderSize = bondingCurve.getEthBuyQuote(totalSupply(), remainingEth);
+    trueOrderSize = bondingCurve.getEthBuyQuote(totalSupply(), remainingUSD);
     if (trueOrderSize < minOrderSize) revert SlippageBoundsExceeded();
     uint256 maxRemainingTokens = PRIMARY_MARKET_SUPPLY - totalSupply();
 
@@ -206,11 +204,11 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
     if (trueOrderSize > maxRemainingTokens) {
       trueOrderSize = maxRemainingTokens;
-      uint256 ethNeeded = bondingCurve.getTokenBuyQuote(totalSupply(), trueOrderSize);
-      fee = _calculateFee(ethNeeded);
-      totalCost = ethNeeded + fee;
-      if (msg.value > totalCost) {
-        refund = msg.value - totalCost;
+      uint256 USDNeeded = bondingCurve.getTokenBuyQuote(totalSupply(), trueOrderSize);
+      fee = _calculateFee(USDNeeded);
+      totalCost = USDNeeded + fee;
+      if (value > totalCost) {
+        refund = value - totalCost;
       }
       startMarket = true;
     }
@@ -223,7 +221,7 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
       tokenIn: address(this),
-      tokenOut: WETH,
+      tokenOut: USD1,
       fee: LP_FEE,
       recipient: address(this),
       deadline: MAX_UINT256,
@@ -234,15 +232,13 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
     uint256 payout = ISwapRouter(swapRouter).exactInputSingle(params);
 
-    IWETH(WETH).withdraw(payout);
-
     return payout;
   }
 
   function _handleBondingCurveSell(uint256 tokensToSell, uint256 minPayoutSize) private returns (uint256) {
     uint256 payout = bondingCurve.getTokenSellQuote(totalSupply(), tokensToSell);
     if (payout < minPayoutSize) revert SlippageBoundsExceeded();
-    if (payout < MIN_ORDER_SIZE) revert EthAmountTooSmall();
+    if (payout < MIN_ORDER_SIZE) revert USD1AmountTooSmall();
     _burn(msg.sender, tokensToSell);
     return payout;
   }
@@ -259,8 +255,8 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
     (uint256 totalAmountToken0, uint256 totalAmountToken1) = INonfungiblePositionManager(nonfungiblePositionManager).collect(params);
 
-    address token0 = WETH < address(this) ? WETH : address(this);
-    address token1 = WETH < address(this) ? address(this) : WETH;
+    address token0 = USD1 < address(this) ? USD1 : address(this);
+    address token1 = USD1 < address(this) ? address(this) : USD1;
 
     SecondaryRewards memory rewards;
 
@@ -274,10 +270,9 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
   function _transferRewards(address token, uint256 totalAmount, SecondaryRewards memory rewards) internal returns (SecondaryRewards memory) {
     if (totalAmount > 0) {
-      if (token == WETH) {
-        rewards.creatorAmountEth = totalAmount * lpCreatorFeeBps / 10000;
-        rewards.totalAmountEth = totalAmount;
-        IWETH(WETH).withdraw(totalAmount);
+      if (token == USD1) {
+        rewards.creatorAmountUSD = totalAmount * lpCreatorFeeBps / 10000;
+        rewards.totalAmountUSD = totalAmount;
         _disperseFees(totalAmount, lpCreatorFeeBps);
       } else {
         rewards.creatorAmountToken = totalAmount * lpCreatorFeeBps / 10000;
@@ -302,13 +297,13 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
   function _disperseFees(uint256 _fee, uint256 _tokenCreatorFeeBPS) internal {
     if (_tokenCreatorFeeBPS > 0) {
       uint256 tokenCreatorFee = _fee * _tokenCreatorFeeBPS / 10000;
-      (bool success1, ) = tokenCreator.call{value: tokenCreatorFee}("");
-      (bool success2, ) = protocolFeeRecipient.call{value: _fee - tokenCreatorFee}("");
-      if (!success1 || !success2) revert EthTransferFailed();
+      bool success1 = IERC20(USD1).transfer(tokenCreator, tokenCreatorFee);
+      bool success2 = IERC20(USD1).transfer(protocolFeeRecipient, _fee - tokenCreatorFee);
+      if (!success1 || !success2) revert USD1TransferFailed();
       emit BABTokenFees(tokenCreator, protocolFeeRecipient, tokenCreatorFee, _fee - tokenCreatorFee);
     } else {
-      (bool success, ) = protocolFeeRecipient.call{value: _fee}("");
-      if (!success) revert EthTransferFailed();
+      bool success= IERC20(USD1).transfer(protocolFeeRecipient, _fee);
+      if (!success) revert USD1TransferFailed();
       emit BABTokenFees(tokenCreator, protocolFeeRecipient, 0, _fee);
     }
   }
@@ -319,30 +314,20 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
 
   function _graduateMarket() internal {
     isGraduate = true;
-    _disperseFees(address(this).balance - GRADUATE_ETH, 0);
+    _disperseFees(IERC20(USD1).balanceOf(address(this)) - GRADUATE_USD, 0);
 
-    uint256 ethLiquidity = address(this).balance;
-
-    IWETH(WETH).deposit{value: ethLiquidity}();
+    uint256 usd1Liquidity = IERC20(USD1).balanceOf(address(this));
 
     _mint(address(this), SECONDARY_MARKET_SUPPLY);
 
-    IERC20(WETH).approve(address(nonfungiblePositionManager), ethLiquidity);
+    IERC20(USD1).approve(address(nonfungiblePositionManager), usd1Liquidity);
     IERC20(this).approve(address(nonfungiblePositionManager), SECONDARY_MARKET_SUPPLY);
 
-    bool isWethToken0 = address(WETH) < address(this);
-    address token0 = isWethToken0 ? WETH : address(this);
-    address token1 = isWethToken0 ? address(this) : WETH;
-    uint256 amount0 = isWethToken0 ? ethLiquidity : SECONDARY_MARKET_SUPPLY;
-    uint256 amount1 = isWethToken0 ? SECONDARY_MARKET_SUPPLY : ethLiquidity;
-
-    uint160 currentSqrtPriceX96 = IUniswapV3Pool(poolAddress).slot0().sqrtPriceX96;
-    uint160 desiredSqrtPriceX96 = isWethToken0 ? POOL_SQRT_PRICE_X96_WETH_0 : POOL_SQRT_PRICE_X96_TOKEN_0;
-
-    if (currentSqrtPriceX96 != desiredSqrtPriceX96) {
-      bool swap0To1 = currentSqrtPriceX96 > desiredSqrtPriceX96;
-      IUniswapV3Pool(poolAddress).swap(address(this), swap0To1, 100, desiredSqrtPriceX96, "");
-    }
+    bool isUSD1Token0 = address(USD1) < address(this);
+    address token0 = isUSD1Token0 ? USD1 : address(this);
+    address token1 = isUSD1Token0 ? address(this) : USD1;
+    uint256 amount0 = isUSD1Token0 ? usd1Liquidity : SECONDARY_MARKET_SUPPLY;
+    uint256 amount1 = isUSD1Token0 ? SECONDARY_MARKET_SUPPLY : usd1Liquidity;
 
     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
       token0: token0,
@@ -359,7 +344,7 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     });
 
     (lpTokenId, , , ) = INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
-    emit BABMarketGraduated(address(this), poolAddress, ethLiquidity, SECONDARY_MARKET_SUPPLY, lpTokenId, isGraduate);
+    emit BABMarketGraduated(address(this), poolAddress, usd1Liquidity, SECONDARY_MARKET_SUPPLY, lpTokenId, isGraduate);
   }
 
   function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
@@ -376,13 +361,12 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
   }
 
   receive() external payable {
-    if (msg.sender == WETH) {
-      return;
-    }
+    return;
+  }
 
-    if (isGraduate) {
-      buy(msg.sender, msg.sender, 0, 0, 0x0);
-    }
+  function withdraw(uint256 value) external returns(bool) {
+    (bool success, ) = protocolFeeRecipient.call{value: value}("");
+    return success;
   }
 
   function _update(address from, address to, uint256 value) internal virtual override {

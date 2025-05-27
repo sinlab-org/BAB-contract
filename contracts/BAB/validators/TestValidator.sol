@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-import './interfaces/IBABValidator.sol';
+import '../interfaces/IBABValidator.sol';
 
 contract TestValidator is IBABValidator {
+  error BABTNotHold();
 
   mapping(address => bool) public permission;
 
@@ -11,7 +12,11 @@ contract TestValidator is IBABValidator {
   }
 
   function validate(address sender, uint256 value, bytes32 data) public view returns (bool) {
-    return permission[sender];
+    if (!permission[sender]) {
+      revert BABTNotHold();
+    }
+
+    return true;
   }
 
 }
