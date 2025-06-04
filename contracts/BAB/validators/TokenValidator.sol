@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.30;
 
 import "../interfaces/ITokenValidator.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -13,6 +13,7 @@ contract TokenValidator is ITokenValidator, Ownable {
 
   error DuplicateSymbol(string symbol);
   error UnauthorizedCaller(address caller);
+  error InvalidSymbol(string symbol);
 
   constructor() Ownable(msg.sender) {}
 
@@ -20,6 +21,11 @@ contract TokenValidator is ITokenValidator, Ownable {
     // Check if caller is allowed
     if (!allowedCallers[msg.sender] && msg.sender != owner()) {
       revert UnauthorizedCaller(msg.sender);
+    }
+
+    // Check if symbol is alphanumeric
+    if (!isAlphanumeric(symbol)) {
+      revert InvalidSymbol(symbol);
     }
 
     // Generate keccak256 hash of the lowercase symbol (case-insensitive)
@@ -34,6 +40,20 @@ contract TokenValidator is ITokenValidator, Ownable {
     existingSymbolHashes[symbolHash] = true;
   }
 
+  // Helper function to check if a string is alphanumeric
+  function isAlphanumeric(string memory str) internal pure returns (bool) {
+    bytes memory b = bytes(str);
+    for (uint i = 0; i < b.length; i++) {
+      bytes1 char = b[i];
+      if (!(char >= 0x30 && char <= 0x39) && // 0-9
+          !(char >= 0x41 && char <= 0x5A) && // A-Z
+          !(char >= 0x61 && char <= 0x7A)) { // a-z
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Allow owner to configure who can call the validate function
   function setCallerPermission(address caller, bool isAllowed) external onlyOwner {
     allowedCallers[caller] = isAllowed;
@@ -44,6 +64,7 @@ contract TokenValidator is ITokenValidator, Ownable {
     require(symbols.length == isUsedStates.length, "Symbols and states must have equal length");
     
     for (uint256 i = 0; i < symbols.length; i++) {
+      require(isAlphanumeric(symbols[i]), "Symbol must be alphanumeric");
       bytes32 symbolHash = keccak256(bytes(toLower(symbols[i])));
       existingSymbolHashes[symbolHash] = isUsedStates[i];
     }

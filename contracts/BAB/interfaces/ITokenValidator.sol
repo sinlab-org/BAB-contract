@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.30;
 
 interface ITokenValidator {
   function validate(string memory name, string memory symbol) external;

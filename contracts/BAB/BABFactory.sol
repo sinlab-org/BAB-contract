@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "./interfaces/IBABFactory.sol";
 import "./BAB.sol";
 import "./interfaces/ITokenValidator.sol";
 import "hardhat/console.sol";
 
-contract BABFactory is IBABFactory, Ownable {
+contract BABFactory is IBABFactory, Ownable2Step {
 
   error InsufficientFee();
 
@@ -20,7 +20,7 @@ contract BABFactory is IBABFactory, Ownable {
   }
 
   function createToken(string memory name, string memory symbol, address validator, string memory tokenUri, bytes32 _salt) external payable returns (address) {
-    if (msg.sender != owner() && msg.value < config.createTokenFee) {
+    if (msg.value < config.createTokenFee) {
       revert InsufficientFee();
     }
 
@@ -40,10 +40,6 @@ contract BABFactory is IBABFactory, Ownable {
 
   function getConfig() public view returns (Config memory) {
     return config;
-  }
-
-  function transferOwner(address to) external onlyOwner {
-    this.transferOwnership(to);
   }
 
   function withdraw(address to) external onlyOwner {

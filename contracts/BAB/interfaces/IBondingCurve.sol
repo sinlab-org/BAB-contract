@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.30;
 
 interface IBondingCurve {
   function getEthSellQuote(uint256 currentSupply, uint256 ethOrderSize) external pure returns (uint256);

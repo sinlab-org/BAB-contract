@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.30;
 
-import { IUniswapV3SwapCallback } from "./IUniswapV3SwapCallback.sol";
+import { IPancakeswapV3SwapCallback } from "./IPancakeswapV3SwapCallback.sol";
 
 /// @title Router token swapping functionality
 /// @notice Functions for swapping tokens via Uniswap V3
-interface ISwapRouter is IUniswapV3SwapCallback {
+interface ISwapRouter is IPancakeswapV3SwapCallback {
     struct ExactInputSingleParams {
         address tokenIn;
         address tokenOut;

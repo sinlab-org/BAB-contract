@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./interfaces/ISwapRouter.sol";
-import "./interfaces/IUniswapV3Pool.sol";
+import "./interfaces/IPancakeswapV3Pool.sol";
 import "./interfaces/IWETH.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 import "./interfaces/IBABFactory.sol";
@@ -52,8 +52,6 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
   // uint256 internal constant GRADUATE_ETH = 0.06 ether;
   // uint160 internal constant POOL_SQRT_PRICE_X96_WETH_0 = 4574240095500993219205240109137920;
   // uint160 internal constant POOL_SQRT_PRICE_X96_TOKEN_0 = 1372272028650298020986880;
-
-  uint256 internal constant MAX_UINT256 = 2**256 - 1;
 
   address public immutable WETH;
   address public immutable nonfungiblePositionManager;
@@ -137,7 +135,7 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
         tokenOut: address(this),
         fee: LP_FEE,
         recipient: recipient,
-        deadline: MAX_UINT256,
+        deadline: block.timestamp,
         amountIn: totalCost,
         amountOutMinimum: minOrderSize,
         sqrtPriceLimitX96: sqrtPriceLimitX96
@@ -177,7 +175,7 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     if (tokensToSell > balanceOf(msg.sender)) revert InsufficientToken();
     if (recipient == address(0)) revert AddressZero();
 
-    uint256 truePayoutSize = isGraduate ? _handleUniswapSell(tokensToSell, minPayoutSize, sqrtPriceLimitX96) : _handleBondingCurveSell(tokensToSell, minPayoutSize);
+    uint256 truePayoutSize = isGraduate ? _handlePancakeswapSell(tokensToSell, minPayoutSize, sqrtPriceLimitX96) : _handleBondingCurveSell(tokensToSell, minPayoutSize);
     uint256 fee = _calculateFee(truePayoutSize);
 
     uint256 payoutAfterFee = truePayoutSize - fee;
@@ -216,8 +214,9 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
     }
   }
 
-  function _handleUniswapSell(uint256 tokensToSell, uint256 minPayoutSize, uint160 sqrtPriceLimitX96) private returns (uint256) {
-    transfer(address(this), tokensToSell);
+  function _handlePancakeswapSell(uint256 tokensToSell, uint256 minPayoutSize, uint160 sqrtPriceLimitX96) private returns (uint256) {
+    bool success = transfer(address(this), tokensToSell);
+    if (!success) revert InsufficientToken();
 
     this.approve(swapRouter, tokensToSell);
 
@@ -226,7 +225,7 @@ contract BAB is ERC20, IERC721Receiver, ReentrancyGuard {
       tokenOut: WETH,
       fee: LP_FEE,
       recipient: address(this),
-      deadline: MAX_UINT256,
+      deadline: block.timestamp,
       amountIn: tokensToSell,
       amountOutMinimum: minPayoutSize,
       sqrtPriceLimitX96: sqrtPriceLimitX96

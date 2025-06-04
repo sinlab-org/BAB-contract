@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.30;
 
-interface IUniswapV3Pool {
+interface IPancakeswapV3Pool {
     /// @notice The fee growth as a Q128.128 fees of token0 collected per unit of liquidity for the entire life of the pool
     /// @dev This value can overflow the uint256
     function feeGrowthGlobal0X128() external view returns (uint256);
